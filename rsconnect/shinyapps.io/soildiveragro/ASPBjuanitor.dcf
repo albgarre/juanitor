@@ -1,0 +1,12 @@
+name: ASPBjuanitor
+title: ASPBjuanitor
+username: soildiveragro
+account: soildiveragro
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 16831504
+bundleId:
+url: https://soildiveragro.shinyapps.io/ASPBjuanitor/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
