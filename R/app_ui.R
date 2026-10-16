@@ -19,7 +19,10 @@ app_ui <- function(request) {
 
       nav_panel(title = "Cleaner",
                mod_cleaner_ui("cleaner_1")
-               )
+               ),
+      nav_panel(title = "tipo",
+                ## comprobar que el mismo SICAL no tiene diferentes protocolos
+                )
       )
   )
 }

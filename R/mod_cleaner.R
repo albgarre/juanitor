@@ -1,3 +1,6 @@
+## TODO: visit previa informativa es inicio válido
+
+
 #' cleaner UI Function
 #'
 #' @description A shiny Module.
@@ -10,6 +13,7 @@
 #' @importFrom bslib layout_column_wrap card card_header card_footer navset_card_tab
 #' @importFrom DT DTOutput renderDT datatable
 #' @importFrom readxl read_excel
+#' @importFrom lubridate year
 #'
 mod_cleaner_ui <- function(id) {
   ns <- NS(id)
@@ -130,11 +134,89 @@ mod_cleaner_ui <- function(id) {
         )
       )
     ),
-    layout_column_wrap(  # -----------------------------------------------------
-                         width = 1,
-                         h3("Sólo falta lo de los ciclos (problemilla cuando hay varios)")
-    ),  # ----------------------------------------------------------------------
+    layout_column_wrap(  # Same SICAL with different people
+      width = 1,
+      navset_card_tab(
+        full_screen = TRUE,
+        title = "Mismo SICAL - diferente persona",
+        nav_panel(
+          title = "Report",
+          DTOutput(ns("report_multisical")),
+          card_footer(
+            downloadButton(ns("down_multisical"), "Download")
+          )
+        ),
+        nav_panel(
+          title = "Correccion",
+          fileInput(ns("file_multisical"), "Report paradoxes"),
+          tableOutput(ns("summary_multisical")),
+          actionButton(ns("apply_multisical"), "Aplicar")
+        ),
+        nav_panel(
+          title = "Saltarse el paso",
+          actionButton(ns("skip_multisical"), "No hace falta")
+        ),
+        nav_panel(
+          "Resultado"
+        )
+      )
+    ),
 
+    layout_column_wrap(  # Check of the right start for the cycles
+      width = 1,
+      navset_card_tab(
+        full_screen = TRUE,
+        title = "Ciclos - check inicio",
+        nav_panel(
+          title = "Report",
+          DTOutput(ns("report_ciclos")),
+          card_footer(
+            downloadButton(ns("down_ciclos"), "Download")
+          )
+        ),
+        nav_panel(
+          title = "Correccion",
+          fileInput(ns("file_ciclos"), "Report paradoxes"),
+          tableOutput(ns("summary_ciclos")),
+          actionButton(ns("apply_ciclos"), "Aplicar")
+        ),
+        nav_panel(
+          title = "Saltarse el paso",
+          actionButton(ns("skip_ciclos"), "No hace falta")
+        ),
+        nav_panel(
+          "Resultado"
+        )
+      )
+    ),
+
+    layout_column_wrap(  # Check for the consistency of the cycles
+      width = 1,
+      navset_card_tab(
+        full_screen = TRUE,
+        title = "Ciclos - check consistencia",
+        nav_panel(
+          title = "Report",
+          DTOutput(ns("report_cyclelogic")),
+          card_footer(
+            downloadButton(ns("down_cyclelogic"), "Download")
+          )
+        ),
+        nav_panel(
+          title = "Correccion",
+          fileInput(ns("file_cyclelogic"), "Report paradoxes"),
+          tableOutput(ns("summary_cyclelogic")),
+          actionButton(ns("apply_cyclelogic"), "Aplicar")
+        ),
+        nav_panel(
+          title = "Saltarse el paso",
+          actionButton(ns("skip_cyclelogic"), "No hace falta")
+        ),
+        nav_panel(
+          "Resultado"
+        )
+      )
+    ),
 
     layout_column_wrap(  # Download the outcome
       width = 1,
@@ -154,7 +236,7 @@ mod_cleaner_ui <- function(id) {
 #'
 #' @importFrom janitor clean_names
 #' @importFrom purrr %>% map imap imap_dfr
-#' @importFrom dplyr select mutate arrange summarize n pull if_else bind_rows left_join
+#' @importFrom dplyr select mutate arrange summarize n pull if_else bind_rows left_join if_else
 #' @importFrom tidyr pivot_wider
 #' @importFrom tibble tibble as_tibble
 #' @importFrom lubridate interval int_start int_end
@@ -974,7 +1056,424 @@ mod_cleaner_server <- function(id){
 
     })
 
+    ## SICALS with various people ----------------------------------------------
 
+    d_multisical <- reactiveVal()
+
+    ## TODO: add the NIF to the download
+
+    ## Showing the time paradoxes
+
+    output$report_multisical <- renderDT({
+
+      validate(need(d_paradox(), message = "Define las paradoxes antes"))
+
+      # browser()
+
+      aa <- d_paradox() |>
+        summarize(.by = c("num_sical", "nif_dni", "establiment_inspeccionat_titular"))
+
+      bad_sicals <- aa |>
+        summarize(n = n(), .by = "num_sical") |>
+        filter(n > 1) |>
+        pull(num_sical)
+
+      aa |>
+        filter(num_sical %in% bad_sicals)
+
+    })
+
+    ## Downloading the template for cases with many sicals
+
+    output$down_multisical <- downloadHandler(
+      filename = "multisicals.xlsx",
+      content = function(file) {
+
+        validate(need(d_paradox(), message = "Da los pasos de antes"))
+
+        # browser()
+
+        aa <- d_paradox() |>
+          summarize(.by = c("num_sical", "nif_dni", "establiment_inspeccionat_titular"))
+
+        bad_sicals <- aa |>
+          mutate(n = n(), .by = "num_sical") |>
+          filter(n > 1) |>
+          pull(num_sical)
+
+        d <- aa |>
+          filter(num_sical %in% bad_sicals) |>
+          mutate(remplazar_titular = "",
+                 remplazar_nif_dni = ""
+                 )
+
+        # nrow(d)
+
+        ## write the file
+
+        write_xlsx(
+          d,
+          path = file
+        )
+
+      }
+    )
+
+    ## Uploading fixing conflict actions
+
+    multisical_actions <- reactive({
+
+      validate(need(input$file_multisical, message = "Sube el archivo de cambios"))
+
+      read_excel(input$file_multisical$datapath, col_types = "text")
+
+    })
+
+    output$summary_multisical <- renderTable({  # Feedbak for data import
+
+      validate(need(multisical_actions(), message = "Sube el archivo de correcciones"))
+
+      d <- multisical_actions()
+
+      # browser()
+
+      ## Change the titular
+
+      d %>%
+        mutate(titular = if_else(is.na(remplazar_titular), "SIN CAMBIO", "CAMBIO"),
+               nif_dni = if_else(is.na(remplazar_nif_dni), "SIN CAMBIO", "CAMBIO")
+               ) |>
+        summarize(n = n(),
+                  .by = c("titular", "nif_dni")
+                  ) |>
+        arrange(desc(n))
+
+    })
+
+    observeEvent(input$apply_multisical, {
+
+      validate(need(d_paradox(), message = "Corrige las paradojas antes"))
+      validate(need(multisical_actions(), message = "Sube el archivo de correcciones"))
+
+      d <- d_paradox()
+
+      ## Corregir los titulares
+
+      actions <- multisical_actions() |>
+        summarize(.by = c("num_sical", "remplazar_titular")) |>
+        filter(!is.na(remplazar_titular))
+
+      if (nrow(actions) == 0) {
+        out <- d
+
+      } else {
+
+        out <- left_join(
+          d, actions
+        ) |>
+          mutate(establiment_inspeccionat_titular = if_else(
+            is.na(remplazar_titular),
+            establiment_inspeccionat_titular,
+            remplazar_titular
+          )) |>
+          select(-remplazar_titular)
+
+      }
+
+      ## Corregir los dni_nif
+
+      actions <- multisical_actions() |>
+        summarize(.by = c("num_sical", "remplazar_nif_dni")) |>
+        filter(!is.na(remplazar_nif_dni))
+
+      if (nrow(actions) == 0) {
+        out <- d
+
+      } else {
+
+        out <- left_join(
+          d, actions
+        ) |>
+          mutate(nif_dni = if_else(
+            is.na(remplazar_nif_dni),
+            nif_dni,
+            remplazar_nif_dni
+          )) |>
+          select(-remplazar_nif_dni)
+
+      }
+
+      ## Return
+
+      d_multisical(out)
+
+    })
+
+    ## Skipping the step for many titulars per sical
+
+    observeEvent(input$skip_multisical, {
+
+      validate(need(d_paradox(), message = "Sube la tabla antes"))
+
+      d <- d_paradox()
+
+      d_multisical(d)
+
+    })
+
+    ## Check of the cycle start ------------------------------------------------
+
+    d_ciclos <- reactiveVal()
+
+    ## Showing the time paradoxes
+
+    output$report_ciclos <- renderDT({
+
+      validate(need(d_multisical(), message = "Define las paradoxes antes"))
+
+      d_multisical() %>%
+        # filter(num_sical %in% c("6800", "6747")) %>%
+        mutate(min_data = min(on), .by = "num_sical") |>
+        filter(on == min_data) |>
+        filter(! (motiu_de_la_inspeccio %in% c("Inicial", "Sobrevinguda", "Per freqüència", "Visita prèvia informativa") )) |>
+        select(serial_number, on, num_sical, motiu_de_la_inspeccio)
+
+    })
+
+    ## Downloading the template for paradoxes
+
+    output$down_ciclos <- downloadHandler(
+      filename = "ciclos_start.xlsx",
+      content = function(file) {
+
+        validate(need(d_multisical(), message = "Define las paradoxes antes"))
+
+        d <- d_multisical() %>%
+          # filter(num_sical %in% c("6800", "6747")) %>%
+          mutate(min_data = min(on), .by = "num_sical") |>
+          filter(on == min_data) |>
+          filter(! (motiu_de_la_inspeccio %in% c("Inicial", "Sobrevinguda", "Per freqüència", "Visita prèvia informativa") )) |>
+          select(serial_number, on, num_sical, motiu_de_la_inspeccio) |>
+          mutate(remplazar = " ")
+
+        ## write the file
+
+        write_xlsx(
+          d,
+          path = file
+        )
+
+      }
+    )
+
+    ## Uploading fixing start of cycle
+
+    ciclos_actions <- reactive({
+
+      validate(need(input$file_ciclos, message = "Sube el archivo de cambios"))
+
+      print("Se ha subido el archivo")
+
+      read_excel(input$file_ciclos$datapath, col_types = "text")
+
+    })
+
+    output$summary_ciclos <- renderTable({  # Feedbak for data import
+
+      validate(need(ciclos_actions(), message = "Sube el archivo de correcciones"))
+
+      print("haciendo el resumen")
+
+      d <- ciclos_actions()
+
+      d %>%
+        summarize(n = n(), .by = c("remplazar")) |>
+        mutate(action = if_else(is.na(remplazar), "SIN CAMBIO", remplazar)) |>
+        arrange(desc(n))
+
+    })
+
+    observeEvent(input$apply_ciclos, {
+
+      validate(need(d_multisical(), message = "Corrige las paradojas antes"))
+      validate(need(ciclos_actions(), message = "Sube el archivo de correcciones"))
+
+      print("corrigiendo")
+
+      d <- d_multisical()
+
+      actions <- ciclos_actions() |>
+        filter(!is.na(remplazar)) |>
+        select(serial_number, remplazar) |>
+        mutate(serial_number = as.numeric(serial_number))
+
+      if (nrow(actions) == 0) {
+        out <- d
+
+      } else {
+
+        out <- left_join(
+          d, actions
+        ) |>
+          mutate(motiu_de_la_inspeccio = if_else(
+            is.na(remplazar),
+            motiu_de_la_inspeccio,
+            remplazar
+          )) |>
+          select(-remplazar)
+
+      }
+
+      d_ciclos(out)
+
+    })
+
+    ## Skipping the missing info step
+
+    observeEvent(input$skip_ciclos, {
+
+      validate(need(d_multisical(), message = "Sube la tabla antes"))
+
+      d <- d_multisical()
+
+      d_ciclos(d)
+
+    })
+
+    ## Check of the cycle logic ------------------------------------------------
+
+    d_cyclelogic <- reactiveVal()
+    # d_logic_issues <- reactiveVal()
+    #
+    ## Showing the time paradoxes
+
+    d_logic_issues <- reactive({
+
+      validate(need(d_ciclos(), message = "Define las paradoxes antes"))   # TODO: do not forget to update this
+
+      print("Calculando las logicas")
+
+      logic_checks <- d_ciclos() |>
+        mutate(outcome = if_else(
+          lubridate::year(on) < 2025,
+          pre_2025_score(resultat_inspeccio),
+          post_2025_score(resultat_inspeccio),
+        )) %>%
+        split(.$num_sical) %>%
+        # set_names(., .) |>
+        map(check_sical_logic)
+
+      logic_checks |>
+        bind_rows() |>
+        filter(issue != "OK", issue != "just one") |>
+        select(serial_number, num_sical,
+               `Motivo anterior` = prev_motive,
+               `Resultado anterior` = prev_outcome,
+               `Este motivo` = this_motive,
+               `Problema potencial` = issue)
+
+    })
+
+    output$report_cyclelogic <- renderDT({
+
+      # validate(need(d_logic_issues(), message = "Define las paradoxes antes"))
+
+      d_logic_issues()
+
+    })
+    #
+    ## Downloading the template for cycle logic
+
+    output$down_cyclelogic <- downloadHandler(
+      filename = "ciclos_logicos.xlsx",
+      content = function(file) {
+
+        # validate(need(d_logic_issues(), message = "Define las paradoxes antes"))
+
+        out <- d_logic_issues() |>
+          mutate(new_motive = " ")
+
+        ## write the file
+
+        write_xlsx(
+          out,
+          path = file
+        )
+
+      }
+    )
+
+    ## Uploading fixing for logic issues
+
+    cyclelogic_actions <- reactive({
+
+      validate(need(input$file_cyclelogic, message = "Sube el archivo de cambios"))
+
+      read_excel(input$file_cyclelogic$datapath, col_types = "text")
+
+    })
+
+    output$summary_cyclelogic <- renderTable({  # Feedbak for data import
+
+      validate(need(cyclelogic_actions(), message = "Sube el archivo de correcciones"))
+
+      d <- cyclelogic_actions()
+
+      d %>%
+        summarize(n = n(), .by = c("new_motive")) |>
+        mutate(action = if_else(is.na(new_motive), "SIN CAMBIO", new_motive)) |>
+        arrange(desc(n))
+
+    })
+
+    observeEvent(input$apply_cyclelogic, {
+
+      validate(need(d_ciclos(), message = "Corrige las paradojas antes"))
+      validate(need(cyclelogic_actions(), message = "Sube el archivo de correcciones"))
+
+      d <- d_ciclos()
+
+      actions <- cyclelogic_actions() |>
+        filter(!is.na(new_motive)) |>
+        select(serial_number, new_motive) |>
+        mutate(serial_number = as.numeric(serial_number))
+
+      if (nrow(actions) == 0) {
+        out <- d
+
+      } else {
+
+        out <- left_join(
+          d, actions
+        ) |>
+          mutate(motiu_de_la_inspeccio = if_else(
+            is.na(new_motive),
+            motiu_de_la_inspeccio,
+            new_motive
+          )) |>
+          select(-new_motive)
+
+      }
+
+      d_ciclos(out)
+
+      d_final(out)
+
+    })
+
+    ## Skipping the missing info step
+
+    observeEvent(input$skip_ciclos, {
+
+      validate(need(d_ciclos(), message = "Sube la tabla antes"))
+
+      d <- d_ciclos()
+
+      d_cyclelogic(d)
+
+      d_final(d)
+
+    })
 
     ## -------------------------------------------------------------------------
 
@@ -997,7 +1496,7 @@ mod_cleaner_server <- function(id){
           mutate(establiment_inspeccionat_cp = format(establiment_inspeccionat_cp,
                                                       width = 5,
                                                       justify = "right"),
-                 establiment_inspeccionat_cp = gsub(" ", "0")
+                 establiment_inspeccionat_cp = gsub(" ", "0", establiment_inspeccionat_cp)
           )
 
         ## write the file
@@ -1025,7 +1524,7 @@ mod_cleaner_server <- function(id){
         mutate(establiment_inspeccionat_cp = format(establiment_inspeccionat_cp,
                                                     width = 5,
                                                     justify = "right"),
-               establiment_inspeccionat_cp = gsub(" ", "0")
+               establiment_inspeccionat_cp = gsub(" ", "0", establiment_inspeccionat_cp)
         )
 
       ## return
