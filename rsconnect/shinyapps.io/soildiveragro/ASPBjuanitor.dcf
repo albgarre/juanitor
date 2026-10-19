@@ -8,5 +8,3 @@ appId: 16831504
 bundleId:
 url: https://soildiveragro.shinyapps.io/ASPBjuanitor/
 version: 1
-asMultiple: FALSE
-asStatic: FALSE
