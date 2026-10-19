@@ -5,6 +5,6 @@ account: soildiveragro
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 16831504
-bundleId:
+bundleId: 12709183
 url: https://soildiveragro.shinyapps.io/ASPBjuanitor/
 version: 1

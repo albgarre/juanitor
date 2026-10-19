@@ -688,6 +688,8 @@ mod_cleaner_server <- function(id){
 
         validate(need(d_noInfo(), message = "Filtra los 'No info' antes"))
 
+        # browser()
+
         ## Get the reactive
 
         d <- d_noInfo()
@@ -740,7 +742,7 @@ mod_cleaner_server <- function(id){
           mutate(establiment_inspeccionat_cp = format(establiment_inspeccionat_cp,
                                                       width = 5,
                                                       justify = "right"),
-                 establiment_inspeccionat_cp = gsub(" ", "0")
+                 establiment_inspeccionat_cp = gsub(" ", "0", establiment_inspeccionat_cp)
                  )
 
         ##  Identify mistmatches and arrange
